@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Entreno kettlebell</title>
+<style>
+:root{--bg:#f6f4ef;--card:#fff;--tx:#1f2933;--mut:#6b7280;--line:#e2ded5;--acc:#e8590c;--emom:#f9c784;--tab:#f4a6a6;--gym:#a9c8f0;--rest:#e7e7e7;color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#15181c;--card:#1f242b;--tx:#eceff3;--mut:#9aa4b0;--line:#313944;--acc:#ff8a4c;--emom:#8a5a1c;--tab:#8a3a3a;--gym:#2f5a8f;--rest:#363c45;color-scheme:dark}}
+:root[data-theme="dark"]{--bg:#15181c;--card:#1f242b;--tx:#eceff3;--mut:#9aa4b0;--line:#313944;--acc:#ff8a4c;--emom:#8a5a1c;--tab:#8a3a3a;--gym:#2f5a8f;--rest:#363c45;color-scheme:dark}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--bg);color:var(--tx);font:16px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;padding:16px 14px 40px;max-width:640px;margin:0 auto}
+h1{font-size:22px;margin:4px 0 2px}
+.sub{color:var(--mut);font-size:14px;margin:0 0 14px}
+.tabs{display:flex;gap:6px;overflow-x:auto;padding-bottom:6px;margin-bottom:12px}
+.tabs button{flex:1 0 auto;min-width:48px;padding:10px 8px;border:1px solid var(--line);background:var(--card);color:var(--tx);border-radius:12px;font:inherit;font-weight:600;cursor:pointer}
+.tabs button.on{background:var(--acc);border-color:var(--acc);color:#fff}
+.tabs small{display:block;font-weight:400;font-size:11px;opacity:.8}
+.badge{display:inline-block;padding:4px 12px;border-radius:99px;font-weight:700;font-size:14px;color:var(--tx)}
+.card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:14px;margin-bottom:12px}
+.ab{display:flex;gap:8px;margin:10px 0}
+.ab button{flex:1;padding:9px;border:1px solid var(--line);background:var(--card);color:var(--tx);border-radius:10px;font:inherit;font-weight:600;cursor:pointer}
+.ab button.on{border-color:var(--acc);color:var(--acc)}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin:10px 0 0}
+.chips span{background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:4px 10px;font-size:13px}
+.ex{display:flex;gap:12px;padding:12px 0;border-top:1px solid var(--line)}
+.ex:first-child{border-top:0}
+.num{flex:0 0 30px;height:30px;border-radius:50%;background:var(--acc);color:#fff;font-weight:700;display:grid;place-items:center;font-size:14px}
+.ex h3{margin:0 0 2px;font-size:16px}
+.ex p{margin:0 0 8px;font-size:14px;color:var(--mut)}
+.vid{display:inline-block;padding:7px 12px;border-radius:10px;background:var(--acc);color:#fff;text-decoration:none;font-size:14px;font-weight:600}
+.msg{text-align:center;padding:26px 10px;color:var(--mut)}
+.msg b{display:block;font-size:18px;color:var(--tx);margin-bottom:4px}
+</style>
+</head>
+<body>
+<h1>Entreno kettlebell</h1>
+<p class="sub" id="sub"></p>
+<div class="tabs" id="tabs"></div>
+<div id="out"></div>
+<script>
+var EX={
+swing2:['Swing a dos manos','Cadera atrás con la espalda recta, balancea la pesa y empuja con la cadera hasta el pecho. Los brazos solo guían.'],
+swing1:['Swing a una mano (alternando)','Igual que el swing normal con una sola mano. Cambia de mano a mitad de tiempo.'],
+goblet:['Goblet squat','Pesa pegada al pecho, sentadilla profunda con el pecho alto y sube empujando el suelo.'],
+cp:['Clean & press (alternando brazos)','Sube la pesa al hombro (posición rack) y empújala sobre la cabeza. Baja controlada y cambia de brazo.'],
+row:['Remo inclinado (alternando brazos)','Cadera atrás y espalda plana; lleva la pesa hacia la cadera con el codo pegado.'],
+twist:['Russian twist con kettlebell','Sentado con el torso inclinado; gira el tronco de lado a lado tocando el suelo con la pesa.'],
+sdhp:['Sumo deadlift high pull','Pies muy abiertos, sube extendiendo cadera y rodillas y tira de la pesa hacia la barbilla con los codos altos.'],
+thr:['Thruster con kettlebell','Sentadilla completa con la pesa al pecho y, al subir, empuja la pesa sobre la cabeza en un solo movimiento.'],
+rdl:['Peso muerto a una pierna','Pesa en una mano, inclina el torso llevando la otra pierna atrás con la espalda recta. Cambia de pierna.'],
+drag:['Plancha con arrastre de kettlebell','En plancha alta, arrastra la pesa de un lado a otro sin girar la cadera.'],
+lunge:['Zancada inversa con kettlebell','Pesa al pecho, paso atrás hasta casi tocar el suelo con la rodilla y vuelve. Alterna piernas.']
+};
+var R={
+emom:{A:['swing2','goblet','cp','row','twist'],B:['sdhp','swing1','thr','rdl','drag']},
+tabata:{A:['swing2','goblet','thr','row','drag'],B:['sdhp','swing1','cp','lunge','twist']}
+};
+var DAYS=['Lun','Mar','Mié','Jue','Vie','Sáb','Dom'];
+var FULL=['Lunes','Martes','Miércoles','Jueves','Viernes','Sábado','Domingo'];
+var KIND=['emom','rest','tabata','gym','rest','gym','rest'];
+var COL={emom:'var(--emom)',tabata:'var(--tab)',gym:'var(--gym)',rest:'var(--rest)'};
+var now=new Date(),dow=(now.getDay()+6)%7;
+var mon=new Date(now.getFullYear(),now.getMonth(),now.getDate()-dow);
+var wk=Math.round((mon-new Date(2026,9,26))/604800000);
+var thisAB=(((wk%2)+2)%2===0)?'A':'B';
+var sel=dow,ab=thisAB;
+document.getElementById('sub').textContent='Esta semana toca la rutina '+thisAB+' · alterna cada semana';
+function tabs(){
+  var h='';
+  for(var i=0;i<7;i++){h+='<button class="'+(i===sel?'on':'')+'" onclick="pick('+i+')">'+DAYS[i]+'<small>'+(i===dow?'hoy':'')+'</small></button>';}
+  document.getElementById('tabs').innerHTML=h;
+}
+function pick(i){sel=i;ab=thisAB;render();}
+function setAB(v){ab=v;render();}
+function render(){
+  tabs();
+  var k=KIND[sel],o='';
+  var label={emom:'Kettlebell · EMOM',tabata:'Kettlebell · Tabata',gym:'Deka',rest:'Descanso'}[k];
+  o+='<div class="card"><span class="badge" style="background:'+COL[k]+'">'+FULL[sel]+'</span><h2 style="margin:10px 0 0;font-size:19px">'+label+'</h2>';
+  if(k==='rest'){o+='<div class="msg"><b>Descanso de entreno</b>Solo la caminata de abajo. Hidrátate y estira suave.</div></div>';}
+  else if(k==='gym'){o+='<div class="msg"><b>Día de Deka</b>Entrenamiento híbrido. Hoy no toca caminata.</div></div>';}
+  else{
+    var e=k==='emom';
+    o+='<div class="ab"><button class="'+(ab==='A'?'on':'')+'" onclick="setAB(\'A\')">Rutina A</button><button class="'+(ab==='B'?'on':'')+'" onclick="setAB(\'B\')">Rutina B</button></div>';
+    o+='<div class="chips">'+(e
+      ?'<span>⏱ 40 s trabajo</span><span>😮‍💨 20 s descanso</span><span>🔁 5 rondas de 5 min</span><span>Total ≈ 30 min</span>'
+      :'<span>⏱ 20 s trabajo</span><span>😮‍💨 10 s descanso</span><span>🔁 8 rondas por ejercicio</span><span>1 min entre ejercicios</span><span>Total ≈ 30 min</span>')+'</div></div>';
+    o+='<div class="card"><p class="sub" style="margin:0 0 4px">'+(e?'Un ejercicio por minuto; al acabar el 5 repite desde el 1. Antes, 5 min de calentamiento.':'Haz las 8 rondas de cada ejercicio y descansa 1 min antes del siguiente. Antes, 5 min de calentamiento.')+'</p>';
+    R[k][ab].forEach(function(id,i){
+      var x=EX[id];
+      o+='<div class="ex"><div class="num">'+(i+1)+'</div><div><h3>'+x[0]+'</h3><p>'+x[1]+'</p><a class="vid" target="_blank" rel="noopener" href="https://www.youtube.com/results?search_query='+encodeURIComponent('kettlebell '+x[0].replace(/\(.*\)/,'')+' técnica')+'">▶ Ver vídeo</a></div></div>';
+    });
+    o+='</div>';
+  }
+  if(k!=='gym'){o+='<div class="card"><span class="badge" style="background:var(--rest)">Todos los días menos Deka</span><h2 style="margin:10px 0 0;font-size:19px">Caminata</h2><p class="sub" style="margin:4px 0 0">Salir a caminar o caminar en la cinta.</p><div class="chips"><span>⛰ Inclinación 15</span><span>⚡ Velocidad 4–5 km/h</span></div></div>';}
+  document.getElementById('out').innerHTML=o;
+}
+render();
+</script>
+</body>
+</html>
