@@ -32,6 +32,12 @@ h1{font-size:22px;margin:4px 0 2px}
 .vid{display:inline-block;padding:7px 12px;border-radius:10px;background:var(--acc);color:#fff;text-decoration:none;font-size:14px;font-weight:600}
 .msg{text-align:center;padding:26px 10px;color:var(--mut)}
 .msg b{display:block;font-size:18px;color:var(--tx);margin-bottom:4px}
+.time{font-size:76px;font-weight:800;text-align:center;font-variant-numeric:tabular-nums;line-height:1.1;margin:6px 0}
+.phase{text-align:center;font-weight:800;letter-spacing:.08em;padding:8px;border-radius:10px;background:var(--rest);color:var(--tx)}
+.phase.work{background:var(--acc);color:#fff}.phase.rest{background:var(--gym)}
+.tex{text-align:center;font-size:19px;font-weight:700;margin-top:4px}
+.tm .mut{text-align:center}
+.tm .ab button{padding:14px 6px}
 </style>
 </head>
 <body>
@@ -87,6 +93,7 @@ function render(){
     o+='<div class="chips">'+(e
       ?'<span>⏱ 40 s trabajo</span><span>😮‍💨 20 s descanso</span><span>🔁 5 rondas de 5 min</span><span>Total ≈ 30 min</span>'
       :'<span>⏱ 20 s trabajo</span><span>😮‍💨 10 s descanso</span><span>🔁 8 rondas por ejercicio</span><span>1 min entre ejercicios</span><span>Total ≈ 30 min</span>')+'</div></div>';
+    o+='<div class="card tm"><div class="phase" id="tmPhase">LISTO</div><div class="time" id="tmTime">05:00</div><div class="tex" id="tmEx"></div><div class="mut" id="tmInfo"></div><div class="mut" id="tmLeft"></div><div class="ab"><button id="tmGo" onclick="tmToggle()">▶ Empezar</button><button onclick="tmSkip()">⏭ Saltar</button><button onclick="tmReset()">↺ Reiniciar</button></div><div class="mut" style="font-size:12px">Deja la pantalla encendida. Pitido en cada cambio y cuenta atrás de 3 s.</div></div>';
     o+='<div class="card"><p class="sub" style="margin:0 0 4px">'+(e?'Un ejercicio por minuto; al acabar el 5 repite desde el 1. Antes, 5 min de calentamiento.':'Haz las 8 rondas de cada ejercicio y descansa 1 min antes del siguiente. Antes, 5 min de calentamiento.')+'</p>';
     R[k][ab].forEach(function(id,i){
       var x=EX[id];
@@ -96,7 +103,96 @@ function render(){
   }
   if(k!=='gym'){o+='<div class="card"><span class="badge" style="background:var(--rest)">Todos los días menos Deka</span><h2 style="margin:10px 0 0;font-size:19px">Caminata</h2><p class="sub" style="margin:4px 0 0">Salir a caminar o caminar en la cinta.</p><div class="chips"><span>⛰ Inclinación 15</span><span>⚡ Velocidad 4–5 km/h</span></div></div>';}
   document.getElementById('out').innerHTML=o;
+  tmInit(k);
 }
+var TM={segs:[],i:0,end:0,rem:0,run:false,started:false,done:false,last:-1,iv:null,lock:null,kind:''},AC=null;
+function $t(i){return document.getElementById(i)}
+function audio(){
+  try{if(navigator.audioSession)navigator.audioSession.type='ambient'}catch(e){}
+  try{if(!AC){var C=window.AudioContext||window.webkitAudioContext;if(C)AC=new C()}if(AC&&AC.state!=='running')AC.resume()}catch(e){}
+}
+function beep(f,d){
+  if(!AC)return;
+  try{var o=AC.createOscillator(),g=AC.createGain(),t=AC.currentTime;o.type='sine';o.frequency.value=f;
+    g.gain.setValueAtTime(0.0001,t);g.gain.exponentialRampToValueAtTime(0.5,t+0.01);g.gain.exponentialRampToValueAtTime(0.0001,t+d);
+    o.connect(g);g.connect(AC.destination);o.start(t);o.stop(t+d+0.05)}catch(e){}
+}
+function cue(sg){if(sg.t==='work')beep(1320,.5);else if(sg.t==='warm')beep(880,.3);else beep(660,.4)}
+function finishBeep(){beep(880,.2);setTimeout(function(){beep(880,.2)},300);setTimeout(function(){beep(1320,.7)},600)}
+function tmBuild(){
+  var ids=R[TM.kind][ab],nm=ids.map(function(id){return EX[id][0].replace(/\s*\(.*\)/,'')}),sg=[];
+  sg.push({t:'warm',d:300,n:'Calentamiento',info:'Movilidad y swings ligeros'});
+  if(TM.kind==='emom'){
+    for(var r=0;r<5;r++)for(var j=0;j<5;j++){
+      sg.push({t:'work',d:40,n:nm[j],info:'Ronda '+(r+1)+'/5 · ejercicio '+(j+1)+'/5'});
+      sg.push({t:'rest',d:20,n:'Descanso',info:'Ronda '+(r+1)+'/5 · ejercicio '+(j+1)+'/5'});
+    }
+  }else{
+    for(var j=0;j<5;j++){
+      for(var r=0;r<8;r++){
+        sg.push({t:'work',d:20,n:nm[j],info:'Ejercicio '+(j+1)+'/5 · ronda '+(r+1)+'/8'});
+        sg.push({t:'rest',d:10,n:'Descanso',info:'Ejercicio '+(j+1)+'/5 · ronda '+(r+1)+'/8'});
+      }
+      if(j<4)sg.push({t:'rest',d:60,n:'Descanso largo',info:'Prepara: '+nm[j+1]});
+    }
+  }
+  for(var i=0;i<sg.length;i++)if(sg[i].t==='rest'&&sg[i].d<60&&sg[i+1])sg[i].info='Siguiente: '+sg[i+1].n;
+  TM.segs=sg;
+}
+function tmInit(k){
+  tmStop();
+  if(k==='emom'||k==='tabata'){TM.kind=k;tmReset()}else{TM.segs=[]}
+}
+function tmStop(){if(TM.iv){clearInterval(TM.iv);TM.iv=null}TM.run=false;if(TM.lock){try{TM.lock.release()}catch(e){}TM.lock=null}}
+function tmReset(){
+  tmStop();tmBuild();TM.i=0;TM.rem=TM.segs[0].d*1000;TM.started=false;TM.done=false;TM.last=-1;tmDraw()
+}
+async function wake(){try{if(navigator.wakeLock&&!TM.lock){TM.lock=await navigator.wakeLock.request('screen')}}catch(e){}}
+function tmToggle(){
+  audio();
+  if(!TM.segs.length)return;
+  if(TM.done)tmReset();
+  if(TM.run){TM.rem=Math.max(0,TM.end-Date.now());tmStop()}
+  else{
+    TM.run=true;TM.end=Date.now()+TM.rem;
+    if(!TM.started){TM.started=true;cue(TM.segs[TM.i])}else beep(880,.15);
+    TM.iv=setInterval(tmTick,100);wake()
+  }
+  tmDraw()
+}
+function tmSkip(){
+  if(!TM.segs.length||TM.done)return;audio();
+  if(TM.run){TM.end=Date.now();tmTick()}
+  else if(TM.i<TM.segs.length-1){TM.i++;TM.rem=TM.segs[TM.i].d*1000;TM.started=true;tmDraw()}
+}
+function tmTick(){
+  var now=Date.now(),moved=false;
+  while(now>=TM.end&&TM.i<TM.segs.length){
+    TM.i++;moved=true;
+    if(TM.i>=TM.segs.length)break;
+    TM.end+=TM.segs[TM.i].d*1000;
+  }
+  if(TM.i>=TM.segs.length){TM.i=TM.segs.length-1;TM.rem=0;TM.done=true;tmStop();finishBeep();tmDraw();return}
+  if(moved){TM.last=-1;cue(TM.segs[TM.i])}
+  var s=Math.ceil((TM.end-now)/1000);
+  if(s<=3&&s>=1&&s!==TM.last){TM.last=s;beep(880,.12)}
+  tmDraw()
+}
+function fmt(ms){var s=Math.max(0,Math.ceil(ms/1000)),m=Math.floor(s/60);s=s%60;return String(m).padStart(2,'0')+':'+String(s).padStart(2,'0')}
+function tmDraw(){
+  if(!$t('tmTime')||!TM.segs.length)return;
+  var sg=TM.segs[TM.i],cur=TM.run?Math.max(0,TM.end-Date.now()):TM.rem,left=cur;
+  for(var j=TM.i+1;j<TM.segs.length;j++)left+=TM.segs[j].d*1000;
+  var p=$t('tmPhase');
+  p.className='phase'+(sg.t==='work'?' work':sg.t==='rest'?' rest':'');
+  p.textContent=TM.done?'¡TERMINADO!':sg.t==='warm'?'CALENTAMIENTO':sg.t==='work'?'¡TRABAJO!':'DESCANSO';
+  $t('tmTime').textContent=fmt(cur);
+  $t('tmEx').textContent=TM.done?'Buen trabajo 💪':sg.n;
+  $t('tmInfo').textContent=TM.done?'':sg.info;
+  $t('tmLeft').textContent=TM.done?'':'Quedan '+fmt(left)+' en total';
+  $t('tmGo').textContent=TM.done?'✅ Otra vez':TM.run?'⏸ Pausar':(TM.started?'▶ Reanudar':'▶ Empezar')
+}
+document.addEventListener('visibilitychange',function(){if(!document.hidden&&TM.run){wake();tmTick()}});
 render();
 </script>
 </body>
