@@ -38,6 +38,8 @@ h1{font-size:22px;margin:4px 0 2px}
 .tex{text-align:center;font-size:19px;font-weight:700;margin-top:4px}
 .tm .mut{text-align:center}
 .tm .ab button{padding:14px 6px}
+#flash{position:fixed;inset:0;pointer-events:none;opacity:0;transition:opacity .6s;z-index:9}
+#flash.on{opacity:.55;transition:none}
 </style>
 </head>
 <body>
@@ -45,6 +47,7 @@ h1{font-size:22px;margin:4px 0 2px}
 <p class="sub" id="sub"></p>
 <div class="tabs" id="tabs"></div>
 <div id="out"></div>
+<div id="flash"></div>
 <script>
 var EX={
 swing2:['Swing a dos manos','Cadera atrás con la espalda recta, balancea la pesa y empuja con la cadera hasta el pecho. Los brazos solo guían.'],
@@ -93,7 +96,7 @@ function render(){
     o+='<div class="chips">'+(e
       ?'<span>⏱ 40 s trabajo</span><span>😮‍💨 20 s descanso</span><span>🔁 5 rondas de 5 min</span><span>Total ≈ 30 min</span>'
       :'<span>⏱ 20 s trabajo</span><span>😮‍💨 10 s descanso</span><span>🔁 8 rondas por ejercicio</span><span>1 min entre ejercicios</span><span>Total ≈ 30 min</span>')+'</div></div>';
-    o+='<div class="card tm"><div class="phase" id="tmPhase">LISTO</div><div class="time" id="tmTime">05:00</div><div class="tex" id="tmEx"></div><div class="mut" id="tmInfo"></div><div class="mut" id="tmLeft"></div><div class="ab"><button id="tmGo" onclick="tmToggle()">▶ Empezar</button><button onclick="tmSkip()">⏭ Saltar</button><button onclick="tmReset()">↺ Reiniciar</button></div><div class="mut" style="font-size:12px">Deja la pantalla encendida. Pitido en cada cambio y cuenta atrás de 3 s.</div></div>';
+    o+='<div class="card tm"><div class="phase" id="tmPhase">LISTO</div><div class="time" id="tmTime">05:00</div><div class="tex" id="tmEx"></div><div class="mut" id="tmInfo"></div><div class="mut" id="tmLeft"></div><div class="ab"><button id="tmGo" onclick="tmToggle()">▶ Empezar</button><button onclick="tmSkip()">⏭ Saltar</button><button onclick="tmReset()">↺ Reiniciar</button></div><div class="ab"><button onclick="testSound()">🔊 Probar sonido</button></div><div class="mut" style="font-size:12px">Puedes bloquear el móvil: los avisos van dentro del audio. Desde la pantalla de bloqueo: pausa y ⏭ siguiente bloque. En iPhone, quita el modo silencio.</div></div>';
     o+='<div class="card"><p class="sub" style="margin:0 0 4px">'+(e?'Un ejercicio por minuto; al acabar el 5 repite desde el 1. Antes, 5 min de calentamiento.':'Haz las 8 rondas de cada ejercicio y descansa 1 min antes del siguiente. Antes, 5 min de calentamiento.')+'</p>';
     R[k][ab].forEach(function(id,i){
       var x=EX[id];
@@ -105,22 +108,12 @@ function render(){
   document.getElementById('out').innerHTML=o;
   tmInit(k);
 }
-var TM={segs:[],i:0,end:0,rem:0,run:false,started:false,done:false,last:-1,iv:null,lock:null,kind:''},AC=null;
+// ===== Temporizador basado en una pista de audio: sigue sonando y avanzando con el móvil bloqueado =====
+var SR=8000,TM={segs:[],kind:'',ab:'',url:null,total:0,i:-1,iv:null},AU=new Audio(),ART={};
+AU.preload='auto';
 function $t(i){return document.getElementById(i)}
-function audio(){
-  try{if(navigator.audioSession)navigator.audioSession.type='ambient'}catch(e){}
-  try{if(!AC){var C=window.AudioContext||window.webkitAudioContext;if(C)AC=new C()}if(AC&&AC.state!=='running')AC.resume()}catch(e){}
-}
-function beep(f,d){
-  if(!AC)return;
-  try{var o=AC.createOscillator(),g=AC.createGain(),t=AC.currentTime;o.type='sine';o.frequency.value=f;
-    g.gain.setValueAtTime(0.0001,t);g.gain.exponentialRampToValueAtTime(0.5,t+0.01);g.gain.exponentialRampToValueAtTime(0.0001,t+d);
-    o.connect(g);g.connect(AC.destination);o.start(t);o.stop(t+d+0.05)}catch(e){}
-}
-function cue(sg){if(sg.t==='work')beep(1320,.5);else if(sg.t==='warm')beep(880,.3);else beep(660,.4)}
-function finishBeep(){beep(880,.2);setTimeout(function(){beep(880,.2)},300);setTimeout(function(){beep(1320,.7)},600)}
 function tmBuild(){
-  var ids=R[TM.kind][ab],nm=ids.map(function(id){return EX[id][0].replace(/\s*\(.*\)/,'')}),sg=[];
+  var ids=R[TM.kind][TM.ab],nm=ids.map(function(id){return EX[id][0].replace(/\s*\(.*\)/,'')}),sg=[];
   sg.push({t:'warm',d:300,n:'Calentamiento',info:'Movilidad y swings ligeros'});
   if(TM.kind==='emom'){
     for(var r=0;r<5;r++)for(var j=0;j<5;j++){
@@ -136,63 +129,121 @@ function tmBuild(){
       if(j<4)sg.push({t:'rest',d:60,n:'Descanso largo',info:'Prepara: '+nm[j+1]});
     }
   }
-  for(var i=0;i<sg.length;i++)if(sg[i].t==='rest'&&sg[i].d<60&&sg[i+1])sg[i].info='Siguiente: '+sg[i+1].n;
-  TM.segs=sg;
+  var s=0;for(var i=0;i<sg.length;i++){sg[i].s=s;s+=sg[i].d;if(sg[i].t==='rest'&&sg[i].d<60&&sg[i+1])sg[i].info='Siguiente: '+sg[i+1].n}
+  TM.segs=sg;TM.total=s;
+}
+// --- Síntesis de la pista WAV (8 kHz, 8 bits) con todos los avisos ya colocados ---
+function tone(buf,at,f,d,v){
+  var a=Math.floor(at*SR),n=Math.floor(d*SR),k=2*Math.PI*f/SR;
+  for(var i=0;i<n&&a+i<buf.length;i++){
+    var env=Math.min(1,i/40,(n-i)/200),x=Math.sin(k*i)+0.35*Math.sin(3*k*i);
+    var y=buf[a+i]+x*env*(v||85);buf[a+i]=y>127?127:y<-127?-127:y;
+  }
+}
+function pattern(buf,t,type){
+  if(type==='work'){tone(buf,t,1046,.18);tone(buf,t+.22,1318,.18);tone(buf,t+.44,1568,.5)}
+  else if(type==='rest'){tone(buf,t,784,.35);tone(buf,t+.4,523,.6)}
+  else if(type==='warm'){tone(buf,t,880,.45)}
+  else if(type==='end'){tone(buf,t,784,.2);tone(buf,t+.25,1046,.2);tone(buf,t+.5,1318,.2);tone(buf,t+.75,1568,1)}
+}
+function makeTrack(){
+  var dur=TM.total+3,n=Math.ceil(dur*SR),buf=new Float32Array(n);
+  TM.segs.forEach(function(sg){
+    pattern(buf,sg.s+.05,sg.t);
+    for(var c=3;c>=1;c--)if(sg.d>4)tone(buf,sg.s+sg.d-c,880,.12);
+  });
+  pattern(buf,TM.total+.05,'end');
+  var b=new Uint8Array(44+n),dv=new DataView(b.buffer);
+  function str(o,s){for(var i=0;i<s.length;i++)b[o+i]=s.charCodeAt(i)}
+  str(0,'RIFF');dv.setUint32(4,36+n,true);str(8,'WAVEfmt ');dv.setUint32(16,16,true);dv.setUint16(20,1,true);dv.setUint16(22,1,true);
+  dv.setUint32(24,SR,true);dv.setUint32(28,SR,true);dv.setUint16(32,1,true);dv.setUint16(34,8,true);str(36,'data');dv.setUint32(40,n,true);
+  for(var i=0;i<n;i++)b[44+i]=Math.round(buf[i])+128;
+  if(TM.url)URL.revokeObjectURL(TM.url);
+  TM.url=URL.createObjectURL(new Blob([b],{type:'audio/wav'}));
+  AU.src=TM.url;AU.load();
+}
+// --- Carátula para la pantalla de bloqueo ---
+function art(type){
+  if(ART[type])return ART[type];
+  var cfg={work:['#e8590c','TRABAJO'],rest:['#2f6fb5','DESCANSO'],warm:['#d9902a','CALENTAR'],end:['#2e8b57','FIN']}[type];
+  var c=document.createElement('canvas');c.width=c.height=512;var x=c.getContext('2d');
+  x.fillStyle=cfg[0];x.fillRect(0,0,512,512);x.fillStyle='#fff';x.textAlign='center';x.textBaseline='middle';
+  x.font='bold '+(cfg[1].length>7?78:96)+'px system-ui,sans-serif';x.fillText(cfg[1],256,256);
+  return ART[type]=c.toDataURL('image/png');
+}
+function segAt(t){var sg=TM.segs;for(var i=sg.length-1;i>=0;i--)if(t>=sg[i].s)return i;return 0}
+function meta(i,done){
+  if(!('mediaSession' in navigator))return;
+  var sg=TM.segs[i],type=done?'end':sg.t;
+  var title=done?'¡Terminado!':(sg.t==='work'?'TRABAJO · ':sg.t==='rest'?'DESCANSO · ':'CALENTAMIENTO · ')+sg.n;
+  try{navigator.mediaSession.metadata=new MediaMetadata({title:title,artist:done?'Buen trabajo':sg.info,album:'Entreno kettlebell '+TM.kind.toUpperCase()+' '+TM.ab,artwork:[{src:art(type),sizes:'512x512',type:'image/png'}]})}catch(e){}
+}
+function posState(){
+  try{if(navigator.mediaSession&&navigator.mediaSession.setPositionState&&AU.duration)navigator.mediaSession.setPositionState({duration:AU.duration,position:Math.min(AU.currentTime,AU.duration),playbackRate:1})}catch(e){}
+}
+function sync(){
+  if(!TM.segs.length)return;
+  var t=AU.currentTime,done=AU.ended||t>=TM.total,i=done?TM.segs.length-1:segAt(t);
+  if(i!==TM.i||done!==TM.done){TM.i=i;TM.done=done;meta(i,done);posState()}
+  tmDraw();
 }
 function tmInit(k){
-  tmStop();
-  if(k==='emom'||k==='tabata'){TM.kind=k;tmReset()}else{TM.segs=[]}
-}
-function tmStop(){if(TM.iv){clearInterval(TM.iv);TM.iv=null}TM.run=false;if(TM.lock){try{TM.lock.release()}catch(e){}TM.lock=null}}
-function tmReset(){
-  tmStop();tmBuild();TM.i=0;TM.rem=TM.segs[0].d*1000;TM.started=false;TM.done=false;TM.last=-1;tmDraw()
-}
-async function wake(){try{if(navigator.wakeLock&&!TM.lock){TM.lock=await navigator.wakeLock.request('screen')}}catch(e){}}
-function tmToggle(){
-  audio();
-  if(!TM.segs.length)return;
-  if(TM.done)tmReset();
-  if(TM.run){TM.rem=Math.max(0,TM.end-Date.now());tmStop()}
-  else{
-    TM.run=true;TM.end=Date.now()+TM.rem;
-    if(!TM.started){TM.started=true;cue(TM.segs[TM.i])}else beep(880,.15);
-    TM.iv=setInterval(tmTick,100);wake()
+  if(!AU.paused&&TM.segs.length){tmDraw();return} // si está en marcha, no lo cortes al cambiar de día
+  if(k==='emom'||k==='tabata'){
+    if(TM.kind!==k||TM.ab!==ab||!TM.url){TM.kind=k;TM.ab=ab;tmBuild();TM.url&&URL.revokeObjectURL(TM.url);TM.url=null;AU.removeAttribute('src')}
+    TM.i=-1;TM.done=false;tmDraw();
   }
-  tmDraw()
+}
+function setupSession(){
+  try{if(navigator.audioSession)navigator.audioSession.type='playback'}catch(e){}
+  if(!('mediaSession' in navigator))return;
+  var ms=navigator.mediaSession,h=function(a,f){try{ms.setActionHandler(a,f)}catch(e){}};
+  h('play',function(){AU.play()});h('pause',function(){AU.pause()});
+  h('nexttrack',tmSkip);h('previoustrack',tmPrev);
+  h('seekbackward',null);h('seekforward',null);
+  h('seekto',function(d){AU.currentTime=d.seekTime;sync()});
+}
+function tmToggle(){
+  if(!TM.segs.length)return;
+  if(!TM.url){makeTrack();setupSession()}
+  if(TM.done||AU.ended){AU.currentTime=0;TM.done=false}
+  if(AU.paused){AU.play().catch(function(){});}else AU.pause();
+  sync();
 }
 function tmSkip(){
-  if(!TM.segs.length||TM.done)return;audio();
-  if(TM.run){TM.end=Date.now();tmTick()}
-  else if(TM.i<TM.segs.length-1){TM.i++;TM.rem=TM.segs[TM.i].d*1000;TM.started=true;tmDraw()}
+  if(!TM.url)return;var i=segAt(AU.currentTime);
+  AU.currentTime=i<TM.segs.length-1?TM.segs[i+1].s:TM.total;sync();
 }
-function tmTick(){
-  var now=Date.now(),moved=false;
-  while(now>=TM.end&&TM.i<TM.segs.length){
-    TM.i++;moved=true;
-    if(TM.i>=TM.segs.length)break;
-    TM.end+=TM.segs[TM.i].d*1000;
-  }
-  if(TM.i>=TM.segs.length){TM.i=TM.segs.length-1;TM.rem=0;TM.done=true;tmStop();finishBeep();tmDraw();return}
-  if(moved){TM.last=-1;cue(TM.segs[TM.i])}
-  var s=Math.ceil((TM.end-now)/1000);
-  if(s<=3&&s>=1&&s!==TM.last){TM.last=s;beep(880,.12)}
-  tmDraw()
+function tmPrev(){
+  if(!TM.url)return;var i=segAt(AU.currentTime),sg=TM.segs[i];
+  AU.currentTime=(AU.currentTime-sg.s<3&&i>0)?TM.segs[i-1].s:sg.s;sync();
 }
-function fmt(ms){var s=Math.max(0,Math.ceil(ms/1000)),m=Math.floor(s/60);s=s%60;return String(m).padStart(2,'0')+':'+String(s).padStart(2,'0')}
+function tmReset(){AU.pause();if(TM.url)AU.currentTime=0;TM.i=-1;TM.done=false;sync();tmDraw()}
+function testSound(){
+  var n=SR*2,buf=new Float32Array(n);pattern(buf,0,'work');pattern(buf,1.1,'rest');
+  var b=new Uint8Array(44+n),dv=new DataView(b.buffer);function str(o,s){for(var i=0;i<s.length;i++)b[o+i]=s.charCodeAt(i)}
+  str(0,'RIFF');dv.setUint32(4,36+n,true);str(8,'WAVEfmt ');dv.setUint32(16,16,true);dv.setUint16(20,1,true);dv.setUint16(22,1,true);
+  dv.setUint32(24,SR,true);dv.setUint32(28,SR,true);dv.setUint16(32,1,true);dv.setUint16(34,8,true);str(36,'data');dv.setUint32(40,n,true);
+  for(var i=0;i<n;i++)b[44+i]=Math.round(buf[i])+128;
+  new Audio(URL.createObjectURL(new Blob([b],{type:'audio/wav'}))).play().catch(function(){});
+}
+function fmt(s){s=Math.max(0,Math.ceil(s));var m=Math.floor(s/60);s=s%60;return String(m).padStart(2,'0')+':'+String(s).padStart(2,'0')}
 function tmDraw(){
   if(!$t('tmTime')||!TM.segs.length)return;
-  var sg=TM.segs[TM.i],cur=TM.run?Math.max(0,TM.end-Date.now()):TM.rem,left=cur;
-  for(var j=TM.i+1;j<TM.segs.length;j++)left+=TM.segs[j].d*1000;
+  var t=TM.url?AU.currentTime:0,i=TM.done?TM.segs.length-1:segAt(t),sg=TM.segs[i],started=TM.url&&t>0;
   var p=$t('tmPhase');
-  p.className='phase'+(sg.t==='work'?' work':sg.t==='rest'?' rest':'');
-  p.textContent=TM.done?'¡TERMINADO!':sg.t==='warm'?'CALENTAMIENTO':sg.t==='work'?'¡TRABAJO!':'DESCANSO';
-  $t('tmTime').textContent=fmt(cur);
+  p.className='phase'+(TM.done?'':sg.t==='work'?' work':sg.t==='rest'?' rest':'');
+  p.textContent=TM.done?'¡TERMINADO!':!started?'LISTO':sg.t==='warm'?'CALENTAMIENTO':sg.t==='work'?'¡TRABAJO!':'DESCANSO';
+  $t('tmTime').textContent=fmt(TM.done?0:sg.s+sg.d-t);
   $t('tmEx').textContent=TM.done?'Buen trabajo 💪':sg.n;
   $t('tmInfo').textContent=TM.done?'':sg.info;
-  $t('tmLeft').textContent=TM.done?'':'Quedan '+fmt(left)+' en total';
-  $t('tmGo').textContent=TM.done?'✅ Otra vez':TM.run?'⏸ Pausar':(TM.started?'▶ Reanudar':'▶ Empezar')
+  $t('tmLeft').textContent=TM.done?'':'Quedan '+fmt(TM.total-t)+' en total';
+  $t('tmGo').textContent=TM.done?'✅ Otra vez':!AU.paused?'⏸ Pausar':(started?'▶ Reanudar':'▶ Empezar');
 }
-document.addEventListener('visibilitychange',function(){if(!document.hidden&&TM.run){wake();tmTick()}});
+['timeupdate','play','pause','seeked','ended'].forEach(function(ev){AU.addEventListener(ev,function(){sync();posState()})});
+AU.addEventListener('play',function(){if(!TM.iv)TM.iv=setInterval(sync,250);if(navigator.mediaSession)navigator.mediaSession.playbackState='playing'});
+AU.addEventListener('pause',function(){clearInterval(TM.iv);TM.iv=null;if(navigator.mediaSession)navigator.mediaSession.playbackState='paused'});
+document.addEventListener('visibilitychange',function(){if(!document.hidden)sync()});
 render();
 </script>
 </body>
